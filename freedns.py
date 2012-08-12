@@ -1,3 +1,4 @@
+#!/usr/bin/python2
 """ 
  Quick Linux DNS IP Updater Python script for FreeDNS (freedns.afraid.org)
  
@@ -20,7 +21,32 @@ import sys
 import os
 import time
 import stat
-from urllib import urlopen
+from urllib2 import urlopen
+from urllib2 import URLError, HTTPError
+import logging
+import argparse
+
+# Parse Args
+parser = argparse.ArgumentParser(description='Update Afraid.org dynamic dns.')
+parser.add_argument('-q', dest='consolelevel', action='store_const',
+                   const=logging.ERROR, default=logging.INFO,
+                   help='only show errors in the console')
+parser.add_argument('-d', dest='loglevel', action='store_const',
+                   const=logging.DEBUG, default=logging.INFO,
+                   help='set the file logging level to DEBUG')
+parser.add_argument('-f', dest='logfile', action='store',
+                   default='.freedns_log',
+                   help='file to log output to')
+args = parser.parse_args()
+
+# Create Logger
+log = logging.getLogger('freedns')
+logging.basicConfig(format='%(levelname)-8s [%(asctime)s] %(name)s: %(message)s',
+                   level=args.loglevel, stream=sys.stdout,
+                   filename=args.logfile, filemode='a')
+console = logging.StreamHandler()
+console.setLevel(args.consolelevel)
+logging.getLogger('').addHandler(console)
  
 # FreeDNS Update Key
 update_key = "UPDATE_KEY_HASH"
@@ -29,10 +55,19 @@ update_key = "UPDATE_KEY_HASH"
 update_url = "http://freedns.afraid.org/dynamic/update.php?" + update_key
  
 # External IP URL (must return an IP in plain text)
-ip_url = "http://www.danielgibbs.net/ip.php"
+ip_url = "http://automation.whatismyip.com/n09230945.asp"
  
-# Open URL to return the external IP
-external_ip = urlopen(ip_url).read()
+# Attempt to open URL to return the external IP
+try:
+    external_ip = urlopen(ip_url).read()
+# Handle HTTP errors
+except URLError as e:
+    log.error("Couldn\'t retrieve external IP (" + str(e) + ")")
+    log.critical('Exiting early because of error...')
+    #log.critical('Check the log for more details (' + args.logfile + ')')
+    sys.exit()
+else:
+    log.debug("Got external IP (" + external_ip + ")")
  
 # The file where the last known external IP is written
 ip_file = ".freedns_ip"
@@ -43,7 +78,7 @@ if not os.path.exists(ip_file):
     fh.write(external_ip)
     fh.close()
     last_external_ip = "Unknown"
-    print "Created FreeDNS IP log file: " + ip_file
+    log.info("Created FreeDNS IP log file: " + ip_file)
 else:
     fh = open(ip_file, "r")
     last_external_ip = fh.read()
@@ -52,10 +87,11 @@ else:
 # Check old IP against current IP and update if necessary
 if last_external_ip != external_ip:
     urlopen(update_url)
-    print "External IP updated FROM (" + last_external_ip + ") TO (" + external_ip + ")"
+    log.info("External IP updated FROM (" + last_external_ip + ") TO (" + external_ip + ")")
     fh = open(ip_file, "w")
     fh.write(external_ip)
     fh.close()
 else:
     last_ip_update = time.ctime(os.stat(ip_file).st_mtime)
-    print "External IP (" + external_ip + ") has not changed. Last update was " + last_ip_update
+    log.info("External IP (" + external_ip + ") has not changed.")
+    log.info("Last update was " + last_ip_update)
