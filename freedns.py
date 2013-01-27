@@ -31,9 +31,6 @@ parser = argparse.ArgumentParser(description='Update Afraid.org dynamic dns.')
 parser.add_argument('-q', dest='consolelevel', action='store_const',
                    const=logging.ERROR, default=logging.INFO,
                    help='only show errors in the console')
-parser.add_argument('-d', dest='loglevel', action='store_const',
-                   const=logging.DEBUG, default=logging.INFO,
-                   help='set the file logging level to DEBUG')
 parser.add_argument('-f', dest='logfile', action='store',
                    default='.freedns_log',
                    help='file to log output to')
@@ -42,7 +39,7 @@ args = parser.parse_args()
 # Create Logger
 log = logging.getLogger('freedns')
 logging.basicConfig(format='%(levelname)-8s [%(asctime)s] %(name)s: %(message)s',
-                   level=args.loglevel, stream=sys.stdout,
+                   level=logging.INFO, stream=sys.stdout,
                    filename=args.logfile, filemode='a')
 console = logging.StreamHandler()
 console.setLevel(args.consolelevel)
@@ -55,20 +52,22 @@ update_key = "UPDATE_KEY_HASH"
 update_url = "http://freedns.afraid.org/dynamic/update.php?" + update_key
  
 # External IP URL (must return an IP in plain text)
-ip_url = "http://automation.whatismyip.com/n09230945.asp"
+ip_urls = ("http://www.dangibbs.co.uk/ip.php","http://automation.whatismyip.com/n09230945.asp")
  
 # Attempt to open URL to return the external IP
-try:
-    external_ip = urlopen(ip_url).read()
-# Handle HTTP errors
-except URLError as e:
-    log.error("Couldn\'t retrieve external IP (" + str(e) + ")")
-    log.critical('Exiting early because of error...')
-    #log.critical('Check the log for more details (' + args.logfile + ')')
+for ip_url in ip_urls:
+    try:
+        external_ip = urlopen(ip_url).read()
+        break
+    except URLError as e:
+        log.info("Couldn\'t retrieve external IP from " + str(ip_url) + " (" + str(e) + ")")
+        external_ip = None
+
+if not external_ip:
+    log.error("No external IP found (see the log). Exiting...")
+    log.info("Check your internet connection and/or the list of IP URLs (see freedns.py)")
     sys.exit()
-else:
-    log.debug("Got external IP (" + external_ip + ")")
- 
+
 # The file where the last known external IP is written
 ip_file = ".freedns_ip"
  
